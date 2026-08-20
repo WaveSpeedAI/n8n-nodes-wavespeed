@@ -237,7 +237,7 @@ export class WaveSpeed implements INodeType {
 					},
 				},
 				default: '',
-				placeholder: 'e.g. wavespeed-ai/flux-dev',
+				placeholder: 'e.g. google/nano-banana-2/text-to-image',
 				description:
 					'WaveSpeed model ID to run. Browse all models at https://wavespeed.ai/models.',
 			},

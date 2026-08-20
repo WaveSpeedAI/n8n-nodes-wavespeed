@@ -1,6 +1,6 @@
 # @wavespeed/n8n-nodes-wavespeed
 
-This is an n8n community node for [WaveSpeed AI](https://wavespeed.ai) - generate images and videos with hundreds of hosted AI models (Seedream, Seedance, FLUX, Wan, Kling, and more) directly from your n8n workflows.
+This is an n8n community node for [WaveSpeed AI](https://wavespeed.ai) - generate images and videos with hundreds of hosted AI models (Seedream, Nano Banana, GPT Image, Seedance, Wan, and more) directly from your n8n workflows.
 
 [n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/reference/license/) workflow automation platform.
 
