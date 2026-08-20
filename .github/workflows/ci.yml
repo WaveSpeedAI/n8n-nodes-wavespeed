@@ -9,7 +9,12 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  lint:
+    # Gate for n8n's official community-node rules
+    # (@n8n/eslint-plugin-community-nodes): no Node builtins, no `process` or
+    # other restricted globals, no raw error re-throws, no runtime deps.
+    # These are the same restrictions n8n Cloud enforces at install time, so
+    # they have to fail here rather than in a post-publish scan.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -20,5 +25,16 @@ jobs:
           node-version: '24'
       - run: npm ci
       - run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - run: npm ci
       - run: npm test
       - run: npm run build

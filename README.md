@@ -126,7 +126,8 @@ Requires n8n 1.x and Node.js 20 or newer.
 ```bash
 npm install
 npm run build   # tsc + copy icons to dist
-npm run lint    # eslint with eslint-plugin-n8n-nodes-base
+npm run lint    # eslint 9 flat config: @n8n/eslint-plugin-community-nodes
+                # (n8n Cloud restrictions) + eslint-plugin-n8n-nodes-base
 npm test        # jest unit tests for the request/poll logic
 ```
 
