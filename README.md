@@ -1,4 +1,4 @@
-# n8n-nodes-wavespeed
+# @wavespeed/n8n-nodes-wavespeed
 
 This is an n8n community node for [WaveSpeed AI](https://wavespeed.ai) - generate images and videos with hundreds of hosted AI models (Seedream, Seedance, FLUX, Wan, Kling, and more) directly from your n8n workflows.
 
@@ -10,7 +10,7 @@ Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes
 
 1. In n8n, go to **Settings > Community Nodes**.
 2. Select **Install**.
-3. Enter `n8n-nodes-wavespeed` and confirm.
+3. Enter `@wavespeed/n8n-nodes-wavespeed` and confirm.
 
 ## Credentials
 
@@ -86,7 +86,7 @@ A minimal prompt-to-image workflow you can paste into n8n (**Workflow > Import f
 				}
 			},
 			"name": "WaveSpeed",
-			"type": "n8n-nodes-wavespeed.waveSpeed",
+			"type": "@wavespeed/n8n-nodes-wavespeed.waveSpeed",
 			"typeVersion": 1,
 			"position": [220, 0],
 			"credentials": {
