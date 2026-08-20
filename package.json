@@ -1,6 +1,6 @@
 {
   "name": "@wavespeed/n8n-nodes-wavespeed",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "n8n community node for WaveSpeed AI - generate images and videos with hundreds of hosted AI models",
   "keywords": [
     "n8n-community-node-package",
@@ -24,7 +24,6 @@
   "engines": {
     "node": ">=20"
   },
-  "main": "index.js",
   "scripts": {
     "build": "tsc && node scripts/copy-icons.mjs",
     "dev": "tsc --watch",

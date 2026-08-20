@@ -27,6 +27,7 @@ All operations submit a prediction to `POST https://api.wavespeed.ai/api/v3/{mod
 ```json
 {
 	"urls": ["https://..."],
+	"outputs": ["https://..."],
 	"id": "<prediction id>",
 	"model": "<model id>",
 	"timings": { "executionTime": 1234 }
@@ -39,7 +40,7 @@ Generate an image from a text prompt.
 
 - **Model** - WaveSpeed model ID (default `bytedance/seedream-v5.0-pro`).
 - **Prompt** - text description of the image.
-- **Image Options** - optional `Size` (e.g. `2048*2048`), `Seed`, and `Additional Inputs (JSON)` merged into the request body.
+- **Image Options** - optional `Resolution` (`1k` / `1.5k` / `2k`), `Aspect Ratio`, and `Additional Inputs (JSON)` merged into the request body. Anything else the model accepts (for example `output_format`) goes in Additional Inputs.
 
 ### Generate Video
 
@@ -58,6 +59,12 @@ The power operation: run any of the models on [wavespeed.ai/models](https://wave
 - **Download Output** - download the generated files and attach them as n8n binary data (`data`, `data_1`, ...), ready for the next node (upload to S3, send via Slack, etc.).
 - **Poll Interval (Seconds)** - how often to check progress (default 2).
 - **Timeout (Seconds)** - how long to wait before the node fails (default 600). The prediction keeps running server-side even if the node times out; the error message includes the task ID.
+
+Transient poll failures (network errors, HTTP 429 and 5xx) are retried automatically up to 5 times per poll, so one unlucky request never kills a running generation. Client errors (4xx) fail fast.
+
+### Do not enable "Retry On Fail"
+
+Leave n8n's node-level **Settings > Retry On Fail** switched **off** for generation operations. n8n retries by re-running the whole node, which submits a **new, separately billed** prediction instead of resuming the existing one. The node already retries the parts that are safe to retry (result polling) internally. If you need the task ID of a failed item, enable **Continue On Fail** instead - the error row carries `id` and the message names the task.
 
 ## Example workflow
 

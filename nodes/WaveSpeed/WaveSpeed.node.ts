@@ -8,11 +8,71 @@ import type {
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 
 import {
+	DEFAULT_POLL_INTERVAL_MS,
+	DEFAULT_TIMEOUT_MS,
 	parseJsonParameter,
 	submitPrediction,
 	waitForPrediction,
 	type WaveSpeedPrediction,
 } from './GenericFunctions';
+
+/** Cap on a single output download so a stalled CDN cannot hang the workflow. */
+const DOWNLOAD_TIMEOUT_MS = 120_000;
+
+/** Extensions for the media types WaveSpeed models actually return. */
+const MIME_EXTENSIONS: Record<string, string> = {
+	'image/png': 'png',
+	'image/jpeg': 'jpg',
+	'image/jpg': 'jpg',
+	'image/webp': 'webp',
+	'image/gif': 'gif',
+	'image/avif': 'avif',
+	'video/mp4': 'mp4',
+	'video/webm': 'webm',
+	'video/quicktime': 'mov',
+	'audio/mpeg': 'mp3',
+	'audio/mp3': 'mp3',
+	'audio/wav': 'wav',
+	'audio/x-wav': 'wav',
+	'audio/ogg': 'ogg',
+	'application/json': 'json',
+	'text/plain': 'txt',
+};
+
+/** `image/png; charset=utf-8` is not a MIME type n8n can match on - strip the parameters. */
+function normalizeMimeType(contentType: string | undefined): string | undefined {
+	if (typeof contentType !== 'string') return undefined;
+	const mimeType = contentType.split(';')[0].trim().toLowerCase();
+	return mimeType === '' ? undefined : mimeType;
+}
+
+function extensionForMimeType(mimeType: string | undefined): string | undefined {
+	if (mimeType === undefined) return undefined;
+	const known = MIME_EXTENSIONS[mimeType];
+	if (known !== undefined) return known;
+	const subtype = mimeType.split('/')[1]?.replace(/^x-/, '');
+	return subtype !== undefined && /^[a-z0-9]{1,8}$/.test(subtype) ? subtype : undefined;
+}
+
+/** Name a downloaded file from its URL, adding an extension from the MIME type when the URL has none. */
+function buildFileName(url: string, mimeType: string | undefined, index: number): string {
+	let fileName = '';
+	try {
+		fileName = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '');
+	} catch {
+		fileName = '';
+	}
+	if (fileName === '') {
+		fileName = `output-${index}`;
+	}
+	if (!/\.[a-z0-9]{1,8}$/i.test(fileName)) {
+		const extension = extensionForMimeType(mimeType);
+		if (extension !== undefined) {
+			fileName = `${fileName}.${extension}`;
+		}
+	}
+	return fileName;
+}
 
 export class WaveSpeed implements INodeType {
 	description: INodeTypeDescription = {
@@ -139,19 +199,36 @@ export class WaveSpeed implements INodeType {
 							'Extra model inputs merged into the request body, e.g. {"image": "https://..."}. See the model page on wavespeed.ai for its full schema.',
 					},
 					{
-						displayName: 'Seed',
-						name: 'seed',
-						type: 'number',
-						default: -1,
-						description: 'Random seed for reproducible results. Use -1 for a random seed.',
+						displayName: 'Aspect Ratio',
+						name: 'aspectRatio',
+						type: 'options',
+						default: '1:1',
+						description: 'Aspect ratio of the generated image',
+						options: [
+							{ name: '1:1', value: '1:1' },
+							{ name: '16:9', value: '16:9' },
+							{ name: '2:3', value: '2:3' },
+							{ name: '21:9', value: '21:9' },
+							{ name: '3:2', value: '3:2' },
+							{ name: '3:4', value: '3:4' },
+							{ name: '4:3', value: '4:3' },
+							{ name: '4:5', value: '4:5' },
+							{ name: '5:4', value: '5:4' },
+							{ name: '9:16', value: '9:16' },
+						],
 					},
 					{
-						displayName: 'Size',
-						name: 'size',
-						type: 'string',
-						default: '',
-						placeholder: 'e.g. 2048*2048',
-						description: 'Output resolution as width*height, if the model supports it',
+						displayName: 'Resolution',
+						name: 'resolution',
+						type: 'options',
+						default: '1k',
+						description:
+							'Output resolution tier used for billing. 1k is the lower-cost tier; 2k is the higher-cost tier.',
+						options: [
+							{ name: '1.5K', value: '1.5k' },
+							{ name: '1K', value: '1k' },
+							{ name: '2K', value: '2k' },
+						],
 					},
 				],
 			},
@@ -237,7 +314,7 @@ export class WaveSpeed implements INodeType {
 					},
 				},
 				default: '',
-				placeholder: 'e.g. google/nano-banana-2/text-to-image',
+				placeholder: 'e.g. wavespeed-ai/z-image/turbo',
 				description:
 					'WaveSpeed model ID to run. Browse all models at https://wavespeed.ai/models.',
 			},
@@ -309,29 +386,30 @@ export class WaveSpeed implements INodeType {
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
-		const operation = this.getNodeParameter('operation', 0) as string;
 
 		for (let i = 0; i < items.length; i++) {
+			let predictionId: string | undefined;
 			try {
+				const operation = this.getNodeParameter('operation', i) as string;
 				const model = this.getNodeParameter('model', i) as string;
 				let input: IDataObject = {};
 
 				if (operation === 'generateImage') {
-					const options = this.getNodeParameter('imageOptions', i, {}) as IDataObject;
-					input = parseJsonParameter(options.additionalInputs, 'Additional Inputs (JSON)');
+					const imageOptions = this.getNodeParameter('imageOptions', i, {}) as IDataObject;
+					input = parseJsonParameter(imageOptions.additionalInputs, 'Additional Inputs (JSON)');
 					input.prompt = this.getNodeParameter('prompt', i) as string;
-					if (options.size !== undefined && options.size !== '') {
-						input.size = options.size;
+					if (imageOptions.resolution !== undefined && imageOptions.resolution !== '') {
+						input.resolution = imageOptions.resolution;
 					}
-					if (options.seed !== undefined && options.seed !== -1) {
-						input.seed = options.seed;
+					if (imageOptions.aspectRatio !== undefined && imageOptions.aspectRatio !== '') {
+						input.aspect_ratio = imageOptions.aspectRatio;
 					}
 				} else if (operation === 'generateVideo') {
-					const options = this.getNodeParameter('videoOptions', i, {}) as IDataObject;
-					input = parseJsonParameter(options.additionalInputs, 'Additional Inputs (JSON)');
+					const videoOptions = this.getNodeParameter('videoOptions', i, {}) as IDataObject;
+					input = parseJsonParameter(videoOptions.additionalInputs, 'Additional Inputs (JSON)');
 					input.prompt = this.getNodeParameter('prompt', i) as string;
-					if (options.duration !== undefined) {
-						input.duration = options.duration;
+					if (videoOptions.duration !== undefined) {
+						input.duration = videoOptions.duration;
 					}
 				} else if (operation === 'runModel') {
 					input = parseJsonParameter(this.getNodeParameter('inputs', i), 'Inputs (JSON)');
@@ -347,18 +425,55 @@ export class WaveSpeed implements INodeType {
 					timeout?: number;
 				};
 
+				// A zero poll interval would hammer the API; a zero timeout used to
+				// mean "wait forever" and could strand an execution.
+				const pollIntervalSeconds =
+					typeof options.pollInterval === 'number' && Number.isFinite(options.pollInterval)
+						? Math.max(1, options.pollInterval)
+						: DEFAULT_POLL_INTERVAL_MS / 1000;
+				const timeoutSeconds =
+					typeof options.timeout === 'number' &&
+					Number.isFinite(options.timeout) &&
+					options.timeout > 0
+						? options.timeout
+						: DEFAULT_TIMEOUT_MS / 1000;
+
 				const submitted = await submitPrediction.call(this, model, input);
+				predictionId = submitted.id;
 				const prediction: WaveSpeedPrediction = await waitForPrediction.call(this, submitted.id, {
-					intervalMs: (options.pollInterval ?? 2) * 1000,
-					timeoutMs: (options.timeout ?? 600) * 1000,
+					intervalMs: pollIntervalSeconds * 1000,
+					timeoutMs: timeoutSeconds * 1000,
 				});
 
-				const urls = (prediction.outputs ?? []).filter(
-					(output): output is string => typeof output === 'string',
-				);
+				// Object-valued outputs are real (some models return richer records);
+				// keep them instead of silently dropping the whole generation.
+				const urls: string[] = [];
+				const outputs: Array<string | IDataObject> = [];
+				for (const output of prediction.outputs ?? []) {
+					if (typeof output === 'string') {
+						urls.push(output);
+						outputs.push(output);
+					} else if (output !== null && typeof output === 'object') {
+						const url = (output as IDataObject).url;
+						if (typeof url === 'string') {
+							urls.push(url);
+							outputs.push(url);
+						} else {
+							outputs.push(output);
+						}
+					}
+				}
+				if (outputs.length === 0) {
+					throw new NodeOperationError(
+						this.getNode(),
+						`WaveSpeed prediction completed without any output (task ID: ${prediction.id})`,
+						{ itemIndex: i },
+					);
+				}
 
 				const json: IDataObject = {
 					urls,
+					outputs,
 					id: prediction.id,
 					model: prediction.model ?? model,
 				};
@@ -382,13 +497,15 @@ export class WaveSpeed implements INodeType {
 							method: 'GET',
 							encoding: 'arraybuffer',
 							returnFullResponse: true,
+							timeout: DOWNLOAD_TIMEOUT_MS,
 						})) as { body: Buffer; headers: Record<string, string> };
-						const fileName = new URL(url).pathname.split('/').pop() || `output-${urlIndex}`;
+						const mimeType = normalizeMimeType(response.headers?.['content-type']);
+						const fileName = buildFileName(url, mimeType, urlIndex);
 						const binaryKey = urlIndex === 0 ? 'data' : `data_${urlIndex}`;
 						executionData.binary[binaryKey] = await this.helpers.prepareBinaryData(
 							response.body,
 							fileName,
-							response.headers['content-type'],
+							mimeType,
 						);
 					}
 				}
@@ -396,8 +513,12 @@ export class WaveSpeed implements INodeType {
 				returnData.push(executionData);
 			} catch (error) {
 				if (this.continueOnFail()) {
+					const message = error instanceof Error ? error.message : String(error);
 					returnData.push({
-						json: { error: error instanceof Error ? error.message : String(error) },
+						json: {
+							error: message,
+							...(predictionId !== undefined ? { id: predictionId } : {}),
+						},
 						pairedItem: { item: i },
 					});
 					continue;

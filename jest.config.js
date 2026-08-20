@@ -4,6 +4,6 @@ module.exports = {
 	testEnvironment: 'node',
 	testMatch: ['**/tests/**/*.test.ts'],
 	transform: {
-		'^.+\\.ts$': ['ts-jest', { tsconfig: { strict: true, esModuleInterop: true, skipLibCheck: true } }],
+		'^.+\\.ts$': ['ts-jest', { tsconfig: { strict: true, esModuleInterop: true, skipLibCheck: true, resolveJsonModule: true } }],
 	},
 };

@@ -41,6 +41,12 @@ describe('waveSpeedApiRequest', () => {
 		expect((calls[0].options.headers as IDataObject)['X-Client-Name']).toBe(
 			'n8n-nodes-wavespeed',
 		);
+		expect((calls[0].options.headers as IDataObject)['X-Client-Version']).toBe(
+			require('../package.json').version,
+		);
+		expect((calls[0].options.headers as IDataObject)['X-Client-OS']).toBe(
+			process.platform === 'win32' ? 'windows' : process.platform,
+		);
 	});
 
 	it('throws with the platform message when the envelope code is not 200', async () => {
@@ -72,6 +78,13 @@ describe('submitPrediction', () => {
 		);
 		expect(calls[0].options.body).toEqual({ prompt: 'a lighthouse at dawn' });
 	});
+
+	it('throws instead of returning an id-less prediction', async () => {
+		const { context } = makeContext([envelope({ status: 'created' })]);
+		await expect(
+			submitPrediction.call(context, 'bytedance/seedream-v5.0-pro', { prompt: 'x' }),
+		).rejects.toThrow('did not return a task ID');
+	});
 });
 
 describe('getPrediction', () => {
@@ -84,6 +97,36 @@ describe('getPrediction', () => {
 		expect(calls[0].options.url).toBe(
 			'https://api.wavespeed.ai/api/v3/predictions/task-1/result',
 		);
+	});
+
+	it('retries transient failures before succeeding', async () => {
+		const { context, calls } = makeContext([
+			Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }),
+			Object.assign(new Error('HTTP 502'), { statusCode: 502 }),
+			envelope({ id: 'task-1', status: 'completed' }),
+		]);
+		const prediction = await getPrediction.call(context, 'task-1', { retryBaseMs: 1 });
+
+		expect(prediction.status).toBe('completed');
+		expect(calls).toHaveLength(3);
+	});
+
+	it('does not retry 4xx client errors', async () => {
+		const { context, calls } = makeContext([
+			Object.assign(new Error('HTTP 404'), { statusCode: 404 }),
+		]);
+		await expect(getPrediction.call(context, 'task-1', { retryBaseMs: 1 })).rejects.toThrow();
+		expect(calls).toHaveLength(1);
+	});
+
+	it('names the task when the retry budget is exhausted', async () => {
+		const { context, calls } = makeContext([
+			Object.assign(new Error('HTTP 500'), { statusCode: 500 }),
+		]);
+		await expect(
+			getPrediction.call(context, 'task-1', { retryBaseMs: 1, maxRetries: 2 }),
+		).rejects.toThrow('poll failed after 3 attempts (task ID: task-1)');
+		expect(calls).toHaveLength(3);
 	});
 });
 
@@ -117,6 +160,15 @@ describe('waitForPrediction', () => {
 		await expect(
 			waitForPrediction.call(context, 'task-1', { intervalMs: 1, timeoutMs: 5 }),
 		).rejects.toThrow(/still "processing"/);
+	});
+
+	it('names the task in errors that are not terminal statuses', async () => {
+		const { context } = makeContext([
+			Object.assign(new Error('HTTP 401'), { statusCode: 401, message: 'unauthorized' }),
+		]);
+		await expect(
+			waitForPrediction.call(context, 'task-1', { intervalMs: 1, retryBaseMs: 1 }),
+		).rejects.toThrow('(task ID: task-1)');
 	});
 });
 
