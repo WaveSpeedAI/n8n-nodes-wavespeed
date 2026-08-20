@@ -1,0 +1,128 @@
+# n8n-nodes-wavespeed
+
+This is an n8n community node for [WaveSpeed AI](https://wavespeed.ai) - generate images and videos with hundreds of hosted AI models (Seedream, Seedance, FLUX, Wan, Kling, and more) directly from your n8n workflows.
+
+[n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/reference/license/) workflow automation platform.
+
+## Installation
+
+Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes/installation/) in the n8n community nodes documentation:
+
+1. In n8n, go to **Settings > Community Nodes**.
+2. Select **Install**.
+3. Enter `n8n-nodes-wavespeed` and confirm.
+
+## Credentials
+
+1. Create a WaveSpeed account at [wavespeed.ai](https://wavespeed.ai).
+2. Create an API key under **Access Keys** in your dashboard.
+3. In n8n, create a new **WaveSpeed API** credential and paste the key.
+
+The credential test calls `GET /api/v3/balance`, so a green check also confirms the key has API access.
+
+## Operations
+
+All operations submit a prediction to `POST https://api.wavespeed.ai/api/v3/{model}` and poll `GET /api/v3/predictions/{id}/result` until it finishes. The output for each item is:
+
+```json
+{
+	"urls": ["https://..."],
+	"id": "<prediction id>",
+	"model": "<model id>",
+	"timings": { "executionTime": 1234 }
+}
+```
+
+### Generate Image
+
+Generate an image from a text prompt.
+
+- **Model** - WaveSpeed model ID (default `bytedance/seedream-v5.0-pro`).
+- **Prompt** - text description of the image.
+- **Image Options** - optional `Size` (e.g. `2048*2048`), `Seed`, and `Additional Inputs (JSON)` merged into the request body.
+
+### Generate Video
+
+Generate a video from a text prompt.
+
+- **Model** - WaveSpeed model ID (default `bytedance/seedance-2.5/text-to-video`).
+- **Prompt** - text description of the video.
+- **Video Options** - optional `Duration (Seconds)` and `Additional Inputs (JSON)`.
+
+### Run Model
+
+The power operation: run any of the models on [wavespeed.ai/models](https://wavespeed.ai/models) by passing the model ID and the full request body as JSON. Use this for image-to-image, image-to-video, LoRA, upscaling, lipsync - anything the platform hosts.
+
+### Shared options
+
+- **Download Output** - download the generated files and attach them as n8n binary data (`data`, `data_1`, ...), ready for the next node (upload to S3, send via Slack, etc.).
+- **Poll Interval (Seconds)** - how often to check progress (default 2).
+- **Timeout (Seconds)** - how long to wait before the node fails (default 600). The prediction keeps running server-side even if the node times out; the error message includes the task ID.
+
+## Example workflow
+
+A minimal prompt-to-image workflow you can paste into n8n (**Workflow > Import from Clipboard**):
+
+```json
+{
+	"nodes": [
+		{
+			"parameters": {},
+			"name": "When clicking \"Execute Workflow\"",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [0, 0]
+		},
+		{
+			"parameters": {
+				"operation": "generateImage",
+				"model": "bytedance/seedream-v5.0-pro",
+				"prompt": "A lighthouse on a cliff at dawn, cinematic lighting",
+				"imageOptions": {
+					"size": "2048*2048"
+				},
+				"options": {
+					"downloadOutput": true
+				}
+			},
+			"name": "WaveSpeed",
+			"type": "n8n-nodes-wavespeed.waveSpeed",
+			"typeVersion": 1,
+			"position": [220, 0],
+			"credentials": {
+				"wavespeedApi": {
+					"name": "WaveSpeed API"
+				}
+			}
+		}
+	],
+	"connections": {
+		"When clicking \"Execute Workflow\"": {
+			"main": [[{ "node": "WaveSpeed", "type": "main", "index": 0 }]]
+		}
+	}
+}
+```
+
+## Compatibility
+
+Requires n8n 1.x and Node.js 20 or newer.
+
+## Resources
+
+- [WaveSpeed model catalog](https://wavespeed.ai/models)
+- [WaveSpeed API documentation](https://wavespeed.ai/docs)
+- [n8n community nodes documentation](https://docs.n8n.io/integrations/community-nodes/)
+
+## Development
+
+```bash
+npm install
+npm run build   # tsc + copy icons to dist
+npm run lint    # eslint with eslint-plugin-n8n-nodes-base
+npm test        # jest unit tests for the request/poll logic
+```
+
+## License
+
+[MIT](LICENSE)
