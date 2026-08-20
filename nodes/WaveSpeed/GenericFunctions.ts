@@ -1,5 +1,3 @@
-import { platform } from 'node:os';
-
 import type {
 	IDataObject,
 	IExecuteFunctions,
@@ -31,8 +29,9 @@ export const POLL_RETRY_BASE_MS = 1_000;
 /** Transient HTTP statuses worth retrying, matching the Python SDK. */
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
-/** Normalised OS label, matching the other WaveSpeed clients. */
-const CLIENT_OS = platform() === 'win32' ? 'windows' : platform();
+// No X-Client-OS header here, unlike our other clients: n8n Cloud's community
+// node gate (@n8n/scan-community-package) forbids both importing `node:os` and
+// touching the `process` global, so the host OS is simply not knowable.
 
 /** Marker carrying the HTTP/envelope status of a failed request across the throw. */
 const STATUS_CODE_PROPERTY = 'waveSpeedStatusCode';
@@ -114,7 +113,6 @@ export async function waveSpeedApiRequest(
 			'Content-Type': 'application/json',
 			'X-Client-Name': CLIENT_NAME,
 			'X-Client-Version': PACKAGE_VERSION,
-			'X-Client-OS': CLIENT_OS,
 		},
 		json: true,
 	};
@@ -192,7 +190,11 @@ export async function getPrediction(
 			return data as unknown as WaveSpeedPrediction;
 		} catch (error) {
 			if (!isRetryableError(error)) {
-				throw error;
+				const reason = error instanceof Error ? error.message : String(error);
+				throw new NodeOperationError(
+					this.getNode(),
+					`WaveSpeed result poll failed (task ID: ${predictionId}): ${reason}`,
+				);
 			}
 			lastError = error;
 			if (attempt < maxRetries) {
@@ -265,12 +267,11 @@ export async function waitForPrediction(
 		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		if (message.includes(`(task ID: ${predictionId})`)) {
-			throw error;
-		}
 		throw new NodeOperationError(
 			this.getNode(),
-			`${message} (task ID: ${predictionId})`,
+			message.includes(`(task ID: ${predictionId})`)
+				? message
+				: `${message} (task ID: ${predictionId})`,
 			{ description: `WaveSpeed task ${predictionId} may still be running server-side.` },
 		);
 	}

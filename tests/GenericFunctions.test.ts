@@ -44,9 +44,9 @@ describe('waveSpeedApiRequest', () => {
 		expect((calls[0].options.headers as IDataObject)['X-Client-Version']).toBe(
 			require('../package.json').version,
 		);
-		expect((calls[0].options.headers as IDataObject)['X-Client-OS']).toBe(
-			process.platform === 'win32' ? 'windows' : process.platform,
-		);
+		// No X-Client-OS: n8n Cloud's community-node gate forbids `node:os` and
+		// the `process` global, so the node cannot know the host OS.
+		expect((calls[0].options.headers as IDataObject)['X-Client-OS']).toBeUndefined();
 	});
 
 	it('throws with the platform message when the envelope code is not 200', async () => {
