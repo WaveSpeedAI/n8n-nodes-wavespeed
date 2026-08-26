@@ -212,7 +212,7 @@ export async function getPrediction(
 
 /**
  * Poll a prediction until it reaches a terminal status. Terminal statuses are
- * `completed` (returned), and `failed` / `cancelled` / `timeout` (thrown).
+ * `completed` (returned), and `failed` / `cancelled` / `timeout` / `deleted` (thrown).
  * Throws when `timeoutMs` elapses first; the task keeps running server-side.
  * Every error leaving this function names the task ID.
  */
@@ -250,7 +250,8 @@ export async function waitForPrediction(
 			if (
 				prediction.status === 'failed' ||
 				prediction.status === 'cancelled' ||
-				prediction.status === 'timeout'
+				prediction.status === 'timeout' ||
+				prediction.status === 'deleted'
 			) {
 				throw new NodeOperationError(
 					this.getNode(),

@@ -148,7 +148,7 @@ describe('waitForPrediction', () => {
 		expect(calls).toHaveLength(3);
 	});
 
-	it.each(['failed', 'cancelled', 'timeout'])('throws when the prediction is %s', async (status) => {
+	it.each(['failed', 'cancelled', 'timeout', 'deleted'])('throws when the prediction is %s', async (status) => {
 		const { context } = makeContext([envelope({ id: 'task-1', status, error: 'NSFW content' })]);
 		await expect(
 			waitForPrediction.call(context, 'task-1', { intervalMs: 1 }),
