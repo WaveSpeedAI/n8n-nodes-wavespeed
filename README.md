@@ -46,7 +46,7 @@ Generate an image from a text prompt.
 
 Generate a video from a text prompt.
 
-- **Model** - WaveSpeed model ID (default `bytedance/seedance-2.5/text-to-video`).
+- **Model** - WaveSpeed model ID (default `wavespeed-ai/minimax-h3/text-to-video`, the cheap open-weights starting point; use `bytedance/seedance-2.5/text-to-video` for the highest quality).
 - **Prompt** - text description of the video.
 - **Video Options** - optional `Duration (Seconds)` and `Additional Inputs (JSON)`.
 

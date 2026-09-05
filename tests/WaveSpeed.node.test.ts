@@ -239,7 +239,7 @@ describe('WaveSpeed.execute - per-item behaviour', () => {
 			params: {
 				operation: (i: number) => (i === 0 ? 'generateImage' : 'generateVideo'),
 				model: (i: number) =>
-					i === 0 ? 'bytedance/seedream-v5.0-pro' : 'bytedance/seedance-2.5/text-to-video',
+					i === 0 ? 'bytedance/seedream-v5.0-pro' : 'wavespeed-ai/minimax-h3/text-to-video',
 				videoOptions: { duration: 8 },
 			},
 			apiResponses: (opts) =>
@@ -252,7 +252,7 @@ describe('WaveSpeed.execute - per-item behaviour', () => {
 
 		const submits = apiCalls.filter((call) => call.method === 'POST');
 		expect(submits).toHaveLength(2);
-		expect(submits[1].url).toContain('bytedance/seedance-2.5/text-to-video');
+		expect(submits[1].url).toContain('wavespeed-ai/minimax-h3/text-to-video');
 		expect(submits[1].body).toEqual({ prompt: 'a lighthouse at dawn', duration: 8 });
 	});
 

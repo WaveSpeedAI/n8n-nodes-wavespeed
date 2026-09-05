@@ -247,9 +247,9 @@ export class WaveSpeed implements INodeType {
 						operation: ['generateVideo'],
 					},
 				},
-				default: 'bytedance/seedance-2.5/text-to-video',
+				default: 'wavespeed-ai/minimax-h3/text-to-video',
 				description:
-					'WaveSpeed model ID to run. Browse all models at https://wavespeed.ai/models.',
+					'WaveSpeed model ID to run. The default MiniMax H3 is the cheap open-weights starting point; use bytedance/seedance-2.5/text-to-video for the highest quality. Browse all models at https://wavespeed.ai/models.',
 			},
 			{
 				displayName: 'Prompt',
