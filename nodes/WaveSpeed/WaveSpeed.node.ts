@@ -9,7 +9,6 @@ import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 
 import {
 	DEFAULT_POLL_INTERVAL_MS,
-	DEFAULT_TIMEOUT_MS,
 	parseJsonParameter,
 	submitPrediction,
 	waitForPrediction,
@@ -372,11 +371,11 @@ export class WaveSpeed implements INodeType {
 						name: 'timeout',
 						type: 'number',
 						typeOptions: {
-							minValue: 1,
+							minValue: 0,
 						},
-						default: 600,
+						default: 0,
 						description:
-							'Maximum time to wait for the prediction before the node fails. The task keeps running on WaveSpeed either way.',
+							'Maximum time to wait for the prediction before the node fails. 0 means no limit: wait until the task finishes, however long it takes. The task keeps running on WaveSpeed either way.',
 					},
 				],
 			},
@@ -425,8 +424,8 @@ export class WaveSpeed implements INodeType {
 					timeout?: number;
 				};
 
-				// A zero poll interval would hammer the API; a zero timeout used to
-				// mean "wait forever" and could strand an execution.
+				// A zero poll interval would hammer the API. A zero/missing timeout
+				// means no overall cap; saved workflows with an explicit value keep it.
 				const pollIntervalSeconds =
 					typeof options.pollInterval === 'number' && Number.isFinite(options.pollInterval)
 						? Math.max(1, options.pollInterval)
@@ -436,13 +435,13 @@ export class WaveSpeed implements INodeType {
 					Number.isFinite(options.timeout) &&
 					options.timeout > 0
 						? options.timeout
-						: DEFAULT_TIMEOUT_MS / 1000;
+						: undefined;
 
 				const submitted = await submitPrediction.call(this, model, input);
 				predictionId = submitted.id;
 				const prediction: WaveSpeedPrediction = await waitForPrediction.call(this, submitted.id, {
 					intervalMs: pollIntervalSeconds * 1000,
-					timeoutMs: timeoutSeconds * 1000,
+					timeoutMs: timeoutSeconds === undefined ? undefined : timeoutSeconds * 1000,
 				});
 
 				// Object-valued outputs are real (some models return richer records);

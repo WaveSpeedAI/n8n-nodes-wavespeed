@@ -15,7 +15,6 @@ export const CLIENT_NAME = 'n8n-nodes-wavespeed';
 export const CREDENTIAL_NAME = 'wavespeedApi';
 
 /** Default wait deadline (10 minutes), used whenever the caller asks for <= 0. */
-export const DEFAULT_TIMEOUT_MS = 600_000;
 /** Default gap between result polls. */
 export const DEFAULT_POLL_INTERVAL_MS = 2_000;
 /**
@@ -213,7 +212,9 @@ export async function getPrediction(
 /**
  * Poll a prediction until it reaches a terminal status. Terminal statuses are
  * `completed` (returned), and `failed` / `cancelled` / `timeout` / `deleted` (thrown).
- * Throws when `timeoutMs` elapses first; the task keeps running server-side.
+ * There is no overall cap by default (tasks can run for hours): it waits until a terminal
+ * status. A positive `timeoutMs` opts in to a cap, after which it throws; the task keeps
+ * running server-side. Zero, negative, non-finite or omitted means no cap.
  * Every error leaving this function names the task ID.
  */
 export async function waitForPrediction(
@@ -227,16 +228,16 @@ export async function waitForPrediction(
 	} = {},
 ): Promise<WaveSpeedPrediction> {
 	const requestedInterval = options.intervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-	// A zero/negative interval would busy-loop the API; a zero/negative timeout
-	// used to mean "wait forever", which strands executions.
+	// A zero/negative interval would busy-loop the API.
 	const intervalMs =
 		Number.isFinite(requestedInterval) && requestedInterval >= 1
 			? requestedInterval
 			: DEFAULT_POLL_INTERVAL_MS;
-	const requestedTimeout = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-	const timeoutMs =
-		Number.isFinite(requestedTimeout) && requestedTimeout > 0 ? requestedTimeout : DEFAULT_TIMEOUT_MS;
-	const deadline = Date.now() + timeoutMs;
+	const requestedTimeout = options.timeoutMs;
+	const deadline =
+		typeof requestedTimeout === 'number' && Number.isFinite(requestedTimeout) && requestedTimeout > 0
+			? Date.now() + requestedTimeout
+			: undefined;
 
 	try {
 		for (;;) {
@@ -258,7 +259,7 @@ export async function waitForPrediction(
 					`WaveSpeed prediction ${prediction.status}${prediction.error ? `: ${prediction.error}` : ''} (task ID: ${predictionId})`,
 				);
 			}
-			if (Date.now() > deadline) {
+			if (deadline !== undefined && Date.now() > deadline) {
 				throw new NodeOperationError(
 					this.getNode(),
 					`WaveSpeed prediction is still "${prediction.status}" after the configured timeout (task ID: ${predictionId}). The task keeps running server-side.`,

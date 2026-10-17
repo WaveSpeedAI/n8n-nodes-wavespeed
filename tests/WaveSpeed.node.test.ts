@@ -140,16 +140,41 @@ describe('WaveSpeed.execute - polling resilience', () => {
 });
 
 describe('WaveSpeed.execute - clamping', () => {
-	it('clamps a zero poll interval to 1s and a zero timeout to the default deadline', async () => {
+	it('clamps a zero poll interval to 1s and treats a zero timeout as no cap', async () => {
+		// 30 hours of "processing" at 1s polls, then completion.
+		const polls = 30 * 3600;
+		let n = 0;
 		const { context } = makeExecuteContext({
 			params: { options: { pollInterval: 0, timeout: 0 } },
-			apiResponses: [envelope({ id: 'task-1', status: 'processing' })],
+			apiResponses: () =>
+				++n <= polls
+					? envelope({ id: 'task-1', status: 'processing' })
+					: envelope({ id: 'task-1', status: 'completed', outputs: ['https://cdn.wavespeed.ai/a.png'] }),
 		});
 
-		await expect(WaveSpeed.prototype.execute.call(context)).rejects.toThrow(/after the configured timeout/);
+		await WaveSpeed.prototype.execute.call(context);
 		expect(sleepMock).toHaveBeenCalledWith(1000);
 		expect(sleepMock.mock.calls.every(([ms]) => ms >= 1000)).toBe(true);
-		// 600s default deadline at a 1s interval, not an unbounded wait.
+	});
+
+	it('does not cap the wait when no timeout is configured', async () => {
+		let n = 0;
+		const { context } = makeExecuteContext({
+			apiResponses: () =>
+				++n <= 20_000
+					? envelope({ id: 'task-1', status: 'processing' })
+					: envelope({ id: 'task-1', status: 'completed', outputs: ['https://cdn.wavespeed.ai/a.png'] }),
+		});
+		await WaveSpeed.prototype.execute.call(context);
+		expect(virtualNow - 1_700_000_000_000).toBeGreaterThan(10 * 3600 * 1000);
+	});
+
+	it('still honours an explicit timeout from a saved workflow', async () => {
+		const { context } = makeExecuteContext({
+			params: { options: { pollInterval: 1, timeout: 600 } },
+			apiResponses: [envelope({ id: 'task-1', status: 'processing' })],
+		});
+		await expect(WaveSpeed.prototype.execute.call(context)).rejects.toThrow(/after the configured timeout/);
 		expect(sleepMock.mock.calls.length).toBeLessThanOrEqual(601);
 	});
 

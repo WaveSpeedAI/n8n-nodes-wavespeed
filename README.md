@@ -58,7 +58,7 @@ The power operation: run any of the models on [wavespeed.ai/models](https://wave
 
 - **Download Output** - download the generated files and attach them as n8n binary data (`data`, `data_1`, ...), ready for the next node (upload to S3, send via Slack, etc.).
 - **Poll Interval (Seconds)** - how often to check progress (default 2).
-- **Timeout (Seconds)** - how long to wait before the node fails (default 600). The prediction keeps running server-side even if the node times out; the error message includes the task ID.
+- **Timeout (Seconds)** - maximum time to wait before the node fails. Default 0 means no limit: the node waits until the task completes, fails, is cancelled, times out or is deleted, however long that takes. If you set a positive value and it elapses, the prediction keeps running server-side and the error message includes the task ID.
 
 Transient poll failures (network errors, HTTP 429 and 5xx) are retried automatically up to 5 times per poll, so one unlucky request never kills a running generation. Client errors (4xx) fail fast.
 
