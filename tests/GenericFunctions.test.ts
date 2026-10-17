@@ -29,6 +29,16 @@ function makeContext(responses: Array<IDataObject | Error>) {
 
 const envelope = (data: IDataObject): IDataObject => ({ code: 200, message: 'success', data });
 
+describe('waveSpeedApiRequest timeouts', () => {
+	it('uses 30s for GETs and 60s for submit POSTs', async () => {
+		const { context, calls } = makeContext([envelope({ ok: true })]);
+		await waveSpeedApiRequest.call(context, 'GET', '/api/v3/balance');
+		await waveSpeedApiRequest.call(context, 'POST', '/api/v3/m', { prompt: 'x' });
+		expect(calls[0].options.timeout).toBe(30000);
+		expect(calls[1].options.timeout).toBe(60000);
+	});
+});
+
 describe('waveSpeedApiRequest', () => {
 	it('sends the request with the WaveSpeed credential and attribution header', async () => {
 		const { context, calls } = makeContext([envelope({ ok: true })]);

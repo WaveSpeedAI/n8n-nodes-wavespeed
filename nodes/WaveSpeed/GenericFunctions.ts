@@ -32,6 +32,10 @@ const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 // node gate (@n8n/scan-community-package) forbids both importing `node:os` and
 // touching the `process` global, so the host OS is simply not knowable.
 
+/** Per-request timeouts by request type (ms). There is no overall wait cap. */
+export const GET_TIMEOUT_MS = 30_000; // result polling and read-only GETs
+export const SUBMIT_TIMEOUT_MS = 60_000; // async submit POST (a timeout is an ambiguous outcome)
+
 /** Marker carrying the HTTP/envelope status of a failed request across the throw. */
 const STATUS_CODE_PROPERTY = 'waveSpeedStatusCode';
 
@@ -114,6 +118,7 @@ export async function waveSpeedApiRequest(
 			'X-Client-Version': PACKAGE_VERSION,
 		},
 		json: true,
+		timeout: method === 'GET' ? GET_TIMEOUT_MS : SUBMIT_TIMEOUT_MS,
 	};
 	if (body !== undefined) {
 		options.body = body;
