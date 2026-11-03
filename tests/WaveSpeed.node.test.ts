@@ -335,4 +335,32 @@ describe('WaveSpeed.execute - binary download', () => {
 		);
 		expect(downloadCalls[0].timeout).toBe(120000);
 	});
+
+	it('decodes base64 outputs, fetches only URLs and skips text (enable_base64_output)', async () => {
+		const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(120, 7)]);
+		const { context, downloadCalls } = makeExecuteContext({
+			params: { options: { downloadOutput: true } },
+			apiResponses: [
+				envelope({
+					id: 'task-1',
+					status: 'completed',
+					outputs: [png.toString('base64'), 'https://cdn.wavespeed.ai/media/big.mp4', 'a caption'],
+				}),
+			],
+			downloads: {
+				'https://cdn.wavespeed.ai/media/big.mp4': {
+					body: Buffer.from('mp4-bytes'),
+					headers: { 'content-type': 'video/mp4' },
+				},
+			},
+		});
+
+		const result = await WaveSpeed.prototype.execute.call(context);
+		const binary = result[0][0].binary as unknown as Record<string, { fileName: string; mimeType?: string; fileSize: number }>;
+
+		expect(binary.data).toEqual({ fileName: 'output-0.png', mimeType: 'image/png', fileSize: png.length });
+		expect(binary.data_1).toEqual(expect.objectContaining({ fileName: 'big.mp4', mimeType: 'video/mp4' }));
+		expect(binary.data_2).toBeUndefined();
+		expect(downloadCalls.map((c) => c.url)).toEqual(['https://cdn.wavespeed.ai/media/big.mp4']);
+	});
 });

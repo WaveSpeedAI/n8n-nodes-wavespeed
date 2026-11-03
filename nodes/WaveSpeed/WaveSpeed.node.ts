@@ -53,6 +53,35 @@ function extensionForMimeType(mimeType: string | undefined): string | undefined 
 	return subtype !== undefined && /^[a-z0-9]{1,8}$/.test(subtype) ? subtype : undefined;
 }
 
+/**
+ * With enable_base64_output=true each URL output comes back as naked base64,
+ * while an output over 64 MiB or one the API failed to fetch stays a URL and
+ * text outputs are unchanged - so the kind is decided per output.
+ */
+function isHttpUrl(value: string): boolean {
+	return /^https?:\/\//i.test(value);
+}
+
+function isBase64Output(value: string): boolean {
+	return value.length >= 64 && value.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(value);
+}
+
+/** MIME type of decoded output bytes, from their leading signature. */
+function sniffMimeType(body: Buffer): string | undefined {
+	const at = (offset: number, text: string) =>
+		body.subarray(offset, offset + text.length).toString('latin1') === text;
+	if (body[0] === 0x89 && at(1, 'PNG')) return 'image/png';
+	if (body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff) return 'image/jpeg';
+	if (at(0, 'GIF8')) return 'image/gif';
+	if (at(0, 'RIFF') && at(8, 'WEBP')) return 'image/webp';
+	if (at(0, 'RIFF') && at(8, 'WAVE')) return 'audio/wav';
+	if (at(4, 'ftyp')) return at(8, 'qt') ? 'video/quicktime' : 'video/mp4';
+	if (body[0] === 0x1a && body[1] === 0x45 && body[2] === 0xdf && body[3] === 0xa3) return 'video/webm';
+	if (at(0, 'ID3') || (body[0] === 0xff && (body[1] & 0xe0) === 0xe0)) return 'audio/mpeg';
+	if (at(0, 'OggS')) return 'audio/ogg';
+	return undefined;
+}
+
 /** Name a downloaded file from its URL, adding an extension from the MIME type when the URL has none. */
 function buildFileName(url: string, mimeType: string | undefined, index: number): string {
 	let fileName = '';
@@ -491,6 +520,19 @@ export class WaveSpeed implements INodeType {
 					executionData.binary = {};
 					for (let urlIndex = 0; urlIndex < urls.length; urlIndex++) {
 						const url = urls[urlIndex];
+						const binaryKey = urlIndex === 0 ? 'data' : `data_${urlIndex}`;
+						if (!isHttpUrl(url)) {
+							// Inline base64 output: decode it; plain text has nothing to download.
+							if (!isBase64Output(url)) continue;
+							const body = Buffer.from(url, 'base64');
+							const mimeType = sniffMimeType(body);
+							executionData.binary[binaryKey] = await this.helpers.prepareBinaryData(
+								body,
+								buildFileName('', mimeType, urlIndex),
+								mimeType,
+							);
+							continue;
+						}
 						const response = (await this.helpers.httpRequest({
 							url,
 							method: 'GET',
@@ -500,7 +542,6 @@ export class WaveSpeed implements INodeType {
 						})) as { body: Buffer; headers: Record<string, string> };
 						const mimeType = normalizeMimeType(response.headers?.['content-type']);
 						const fileName = buildFileName(url, mimeType, urlIndex);
-						const binaryKey = urlIndex === 0 ? 'data' : `data_${urlIndex}`;
 						executionData.binary[binaryKey] = await this.helpers.prepareBinaryData(
 							response.body,
 							fileName,
